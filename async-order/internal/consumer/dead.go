@@ -19,8 +19,7 @@ const (
 	deadFlushInterval  = 100 * time.Millisecond
 )
 
-// TODO 消费死信队列
-// 记录错误记录
+// 消费死信队列， 记录错误记录
 func StartDeadConsumer(db *gorm.DB, cache *redis.Client) {
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:       []string{brokerAddress},
@@ -47,11 +46,9 @@ func parseDeadMessage(msgs []kafka.Message) ([]*model.OrderRecord, error) {
 		}
 		inserts = append(inserts, o)
 	}
-
-	// 示例：假设消息是JSON格式
 	return inserts, nil
 }
 
 func consumeDeadMsg(db *gorm.DB, cache *redis.Client, reader *kafka.Reader, msgs []kafka.Message) {
-
+	// 写库，记录错误
 }

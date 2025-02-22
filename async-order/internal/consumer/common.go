@@ -18,11 +18,11 @@ type handleFunc func(db *gorm.DB, cache *redis.Client, reader *kafka.Reader, msg
 
 // 抽象出批量读取kafka消息的逻辑
 func abstractConsumer(db *gorm.DB, cache *redis.Client, reader *kafka.Reader, maxConcurrency int, maxBatchSize int, flushInternal time.Duration, handler handleFunc) {
-	
+
 	// 把消息从kafka读取到这个chan
 	msgChannel := make(chan kafka.Message, maxConcurrency)
-	
-	// 消息拉取协程组
+
+	// 消息拉取协程组，这里应该多协程拉取加快读取速度
 	go func() {
 		for {
 			msg, err := reader.FetchMessage(context.Background())
@@ -61,5 +61,6 @@ func abstractConsumer(db *gorm.DB, cache *redis.Client, reader *kafka.Reader, ma
 		go func(msgs []kafka.Message) {
 			handler(db, cache, reader, msgs)
 		}(msgs)
+		// time.Sleep(50 * time.Millisecond)
 	}
 }

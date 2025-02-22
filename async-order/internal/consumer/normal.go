@@ -20,9 +20,9 @@ const (
 	normalConsumerGroupID = "async-order-consumer-group"
 	normalTopic           = "order-topic"
 
-	normalMaxBatchSize   = 50                     // 最大批次大小
+	normalMaxBatchSize   = 80                    // 最大批次大小
 	normalFlushInterval  = 100 * time.Millisecond // 批量读取消息等待时间
-	normalMaxConcurrency = 60                     // 最大并发批次处理数
+	normalMaxConcurrency = 160                    // 最大并发批次处理数
 )
 
 // 0. 因为需要削峰 需要多协程读取消息然后批量写db
@@ -33,7 +33,6 @@ const (
 // 3.1 唯一索引：查db过滤掉已落库的数据, 再次执行批量插入
 // 3.2 其他异常：再次投递到kafka，超过一定次数投递到死信队列，记录异常操作
 
-// TODO ack怎么选择？自动？异步？同步？
 func StartNormalConsumer(db *gorm.DB, cache *redis.Client) {
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:       []string{brokerAddress},
@@ -42,7 +41,7 @@ func StartNormalConsumer(db *gorm.DB, cache *redis.Client) {
 		MinBytes:      50e3,
 		MaxBytes:      500e3,
 		StartOffset:   kafka.LastOffset, // 从最新位置开始消费
-		QueueCapacity: 200,                // 预读取队列容量
+		QueueCapacity: 200,              // 预读取队列容量
 	})
 	defer reader.Close()
 
@@ -55,22 +54,21 @@ func consumeMsg(db *gorm.DB, cache *redis.Client, reader *kafka.Reader, msgs []k
 		return
 	}
 	inserts, err := parseNormalMessages(msgs)
-	fmt.Errorf("正在消费消息...")
 	if err != nil {
-		fmt.Printf("解析消息失败: %v\n", err)
+		_ = fmt.Errorf("消息解析失败: %v", err)
 		return
 	}
 	// 批量写入数据库
 	if err = handleOrders(db, inserts); err != nil {
 		// panic(err.Error())
-		fmt.Errorf("批量插入失败: %v\n", err)
+		_ = fmt.Errorf("消息处理失败: %v", err)
 		retryBatch(msgs)
 		return
 	}
 
 	// 提交偏移量（需保证至少一次语义）
 	if err := reader.CommitMessages(context.Background(), msgs...); err != nil {
-		fmt.Errorf("提交偏移量失败: %v\n", err)
+		_ = fmt.Errorf("提交偏移量失败: %v", err)
 	}
 }
 
@@ -144,7 +142,7 @@ func handleOrders(db *gorm.DB, inserts []*model.OrderAction) error {
 
 // 消费失败，重新消费
 func retryBatch(batch []kafka.Message) {
-	// TODO 投递到kafka中，超过一定次数再投递到死信队列
+	// TODO 投递到重试队列中，超过一定次数再投递到死信队列
 }
 
 func parseNormalMessages(msgs []kafka.Message) ([]*model.OrderAction, error) {

@@ -1,0 +1,12 @@
+# 1. CPU分析（采样30秒）
+go tool pprof -http=:8080 http://localhost:6060/debug/pprof/profile?seconds=30
+
+# 2. 内存分析
+go tool pprof -http=:8080 http://localhost:6060/debug/pprof/heap
+
+# 3. Goroutine分析
+go tool pprof -http=:8080 http://localhost:6060/debug/pprof/goroutine
+
+# 4. 阻塞分析
+go tool pprof -http=:8080 http://localhost:6060/debug/pprof/block
+

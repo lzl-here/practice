@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/go-redis/redis"
@@ -20,7 +21,7 @@ const (
 	normalConsumerGroupID = "async-order-consumer-group"
 	normalTopic           = "order-topic"
 
-	normalMaxBatchSize   = 80                    // 最大批次大小
+	normalMaxBatchSize   = 100                     // 最大批次大小
 	normalFlushInterval  = 100 * time.Millisecond // 批量读取消息等待时间
 	normalMaxConcurrency = 160                    // 最大并发批次处理数
 )
@@ -55,20 +56,20 @@ func consumeMsg(db *gorm.DB, cache *redis.Client, reader *kafka.Reader, msgs []k
 	}
 	inserts, err := parseNormalMessages(msgs)
 	if err != nil {
-		_ = fmt.Errorf("消息解析失败: %v", err)
+		slog.Error("解析消息失败", "error", err.Error())
 		return
 	}
 	// 批量写入数据库
 	if err = handleOrders(db, inserts); err != nil {
 		// panic(err.Error())
-		_ = fmt.Errorf("消息处理失败: %v", err)
+		slog.Error("批量写入数据库失败", "error", err.Error())
 		retryBatch(msgs)
 		return
 	}
 
 	// 提交偏移量（需保证至少一次语义）
 	if err := reader.CommitMessages(context.Background(), msgs...); err != nil {
-		_ = fmt.Errorf("提交偏移量失败: %v", err)
+		slog.Error("提交偏移量失败", "error", err.Error())
 	}
 }
 

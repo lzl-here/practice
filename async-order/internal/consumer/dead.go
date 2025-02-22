@@ -13,6 +13,10 @@ import (
 const (
 	deadConsumerGroupID = "async-order-dead-consumer-group"
 	deadTopic           = "dead-order-topic"
+
+	deadMaxBatchSize   = 10
+	deadMaxConcurrency = 5
+	deadFlushInterval  = 100 * time.Millisecond
 )
 
 // TODO 消费死信队列
@@ -29,10 +33,8 @@ func StartDeadConsumer(db *gorm.DB, cache *redis.Client) {
 		QueueCapacity: 200,                    // 预读取队列容量
 	})
 	defer reader.Close()
-	batchPool := make(chan struct{}, 5) // 并发控制
-	msgChannel := make(chan kafka.Message, 10*2)
 
-	abstractConsumer(db, cache, reader, batchPool, msgChannel, consumeMsg)
+	abstractConsumer(db, cache, reader, deadMaxConcurrency, deadMaxBatchSize, deadFlushInterval, consumeDeadMsg)
 }
 
 func parseDeadMessage(msgs []kafka.Message) ([]*model.OrderRecord, error) {
@@ -48,4 +50,8 @@ func parseDeadMessage(msgs []kafka.Message) ([]*model.OrderRecord, error) {
 
 	// 示例：假设消息是JSON格式
 	return inserts, nil
+}
+
+func consumeDeadMsg(db *gorm.DB, cache *redis.Client, reader *kafka.Reader, msgs []kafka.Message) {
+
 }

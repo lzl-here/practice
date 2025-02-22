@@ -12,18 +12,16 @@ import (
 
 const (
 	brokerAddress = "localhost:9092"
-
-	maxBatchSize   = 10                     // 最大批次大小
-	flushInterval  = 100 * time.Millisecond // 批量读取消息等待时间
-	maxConcurrency = 5                      // 最大并发批次处理数
-
 )
 
-type handleFunc func(db *gorm.DB, cache *redis.Client, reader *kafka.Reader, batchPool chan struct{}, msgChannel chan kafka.Message, msgs []kafka.Message)
+type handleFunc func(db *gorm.DB, cache *redis.Client, reader *kafka.Reader, msgs []kafka.Message)
 
 // 抽象出批量读取kafka消息的逻辑
-func abstractConsumer(db *gorm.DB, cache *redis.Client, reader *kafka.Reader, batchPool chan struct{}, msgChannel chan kafka.Message, handler handleFunc) {
-
+func abstractConsumer(db *gorm.DB, cache *redis.Client, reader *kafka.Reader, maxConcurrency int, maxBatchSize int, flushInternal time.Duration, handler handleFunc) {
+	
+	// 把消息从kafka读取到这个chan
+	msgChannel := make(chan kafka.Message, maxConcurrency)
+	
 	// 消息拉取协程组
 	go func() {
 		for {
@@ -40,7 +38,7 @@ func abstractConsumer(db *gorm.DB, cache *redis.Client, reader *kafka.Reader, ba
 	// 批量处理协程
 	for {
 		msgs := make([]kafka.Message, 0, maxBatchSize)
-		timeout := time.After(flushInterval)
+		timeout := time.After(flushInternal)
 
 		// 聚合批次，拉取到10条消息 / 超时没读取到消息 执行批量消费
 	AggregateLoop:
@@ -60,9 +58,8 @@ func abstractConsumer(db *gorm.DB, cache *redis.Client, reader *kafka.Reader, ba
 			continue
 		}
 
-		batchPool <- struct{}{} // 获取处理槽位
-		go func(batch []kafka.Message) {
-			handler(db, cache, reader, batchPool, msgChannel, batch)
+		go func(msgs []kafka.Message) {
+			handler(db, cache, reader, msgs)
 		}(msgs)
 	}
 }

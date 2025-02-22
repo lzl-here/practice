@@ -1,4 +1,4 @@
-package main
+package data
 
 import (
 	"fmt"
@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-func connectDB() (*gorm.DB, error) {
+func ConnectDB() (*gorm.DB, error) {
 	hostname := "root"
 	password := "376772346Lzl@"
 	newLogger := logger.New(
@@ -31,7 +31,7 @@ func connectDB() (*gorm.DB, error) {
 	return gorm.Open(mysql.Open(fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/order-test", hostname, password)), cfg)
 }
 
-func connectRedis() *redis.Client {
+func ConnectRedis() *redis.Client {
 	return redis.NewClient(&redis.Options{
 		Addr: "127.0.0.1:6379",
 	})

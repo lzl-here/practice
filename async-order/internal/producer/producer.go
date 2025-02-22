@@ -1,4 +1,4 @@
-package main
+package producer
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 // 2. 发送kafka消息，发送失败返回失败
 // 两者都可以加上最大重试次数，超过次数告警 （优化：自动退避重试）
 
-func sendKafkaMQ(writer *kafka.Writer, oa *model.OrderAction) error {
+func SendKafkaMQ(writer *kafka.Writer, oa *model.OrderAction) error {
 
 	bytes, err := json.Marshal(oa)
 	if err != nil {

@@ -19,9 +19,11 @@ import (
 const (
 	normalConsumerGroupID = "async-order-consumer-group"
 	normalTopic           = "order-topic"
-)
 
-var ()
+	normalMaxBatchSize   = 50                     // 最大批次大小
+	normalFlushInterval  = 100 * time.Millisecond // 批量读取消息等待时间
+	normalMaxConcurrency = 60                     // 最大并发批次处理数
+)
 
 // 0. 因为需要削峰 需要多协程读取消息然后批量写db
 
@@ -37,39 +39,38 @@ func StartNormalConsumer(db *gorm.DB, cache *redis.Client) {
 		Brokers:       []string{brokerAddress},
 		GroupID:       normalConsumerGroupID,
 		Topic:         normalTopic,
-		MinBytes:      50e3, // 提高最小批量阈值
-		MaxBytes:      10e6,
-		MaxWait:       500 * time.Millisecond, // 延长批量等待时间
-		StartOffset:   kafka.LastOffset,       // 从最新位置开始消费
-		QueueCapacity: 200,                    // 预读取队列容量
+		MinBytes:      50e3,
+		MaxBytes:      500e3,
+		StartOffset:   kafka.LastOffset, // 从最新位置开始消费
+		QueueCapacity: 200,                // 预读取队列容量
 	})
 	defer reader.Close()
 
-	batchPool := make(chan struct{}, 5) // 并发控制
-	defer func() { <-batchPool }()
-	msgChannel := make(chan kafka.Message, 10*2)
-
-	abstractConsumer(db, cache, reader, batchPool, msgChannel, consumeMsg)
+	abstractConsumer(db, cache, reader, normalMaxConcurrency, normalMaxBatchSize, normalFlushInterval, consumeMsg)
 }
 
 // 实际消费的逻辑
-func consumeMsg(db *gorm.DB, cache *redis.Client, reader *kafka.Reader, batchPool chan struct{}, msgChannel chan kafka.Message, msgs []kafka.Message) {
-
+func consumeMsg(db *gorm.DB, cache *redis.Client, reader *kafka.Reader, msgs []kafka.Message) {
+	if len(msgs) == 0 {
+		return
+	}
 	inserts, err := parseNormalMessages(msgs)
+	fmt.Errorf("正在消费消息...")
 	if err != nil {
 		fmt.Printf("解析消息失败: %v\n", err)
 		return
 	}
 	// 批量写入数据库
 	if err = handleOrders(db, inserts); err != nil {
-		fmt.Printf("批量插入失败: %v\n", err)
+		// panic(err.Error())
+		fmt.Errorf("批量插入失败: %v\n", err)
 		retryBatch(msgs)
 		return
 	}
 
 	// 提交偏移量（需保证至少一次语义）
 	if err := reader.CommitMessages(context.Background(), msgs...); err != nil {
-		fmt.Printf("提交偏移量失败: %v\n", err)
+		fmt.Errorf("提交偏移量失败: %v\n", err)
 	}
 }
 
@@ -121,13 +122,17 @@ func handleOrders(db *gorm.DB, inserts []*model.OrderAction) error {
 		return nil
 	}
 
-	inserts = append(inserts, &model.OrderAction{AppID: "APP_20250222", OrderID: "92bf639d-94e0-4ee8-a44f-230d6990e31f", ActionType: "created"})
+	// 测试唯一索引报错
+	// inserts = append(inserts, &model.OrderAction{AppID: "APP_20250222", OrderID: "92bf639d-94e0-4ee8-a44f-230d6990e31f", ActionType: "created"})
 
 	err := db.Create(&inserts).Error
 	var mysqlErr *mysql.MySQLError
 	if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
 		if inserts, err = filterExisting(db, inserts); err != nil {
 			return err
+		}
+		if len(inserts) == 0 {
+			return nil
 		}
 		err = db.Create(&inserts).Error
 	}
@@ -143,7 +148,6 @@ func retryBatch(batch []kafka.Message) {
 }
 
 func parseNormalMessages(msgs []kafka.Message) ([]*model.OrderAction, error) {
-
 	var inserts []*model.OrderAction
 	for _, msg := range msgs {
 		o := new(model.OrderAction)
@@ -152,8 +156,5 @@ func parseNormalMessages(msgs []kafka.Message) ([]*model.OrderAction, error) {
 		}
 		inserts = append(inserts, o)
 	}
-
-	// 示例：假设消息是JSON格式
-
 	return inserts, nil
 }

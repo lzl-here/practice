@@ -1,11 +1,11 @@
-package main
+package consumer
 
 import (
+	"async-order/internal/model"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"kafka/internal/model"
 	"time"
 
 	"github.com/go-redis/redis"
@@ -14,18 +14,14 @@ import (
 	"gorm.io/gorm"
 )
 
-// 批量处理配置
+// kafka配置
+
 const (
-	maxBatchSize    = 10                     // 最大批次大小
-	flushInterval   = 100 * time.Millisecond // 批量读取消息等待时间
-	maxConcurrency  = 5                      // 最大并发批次处理数
-	consumerGroupID = "async-order-consumer-group"
+	normalConsumerGroupID = "async-order-consumer-group"
+	normalTopic           = "order-topic"
 )
 
-var (
-	batchPool  = make(chan struct{}, maxConcurrency) // 并发控制
-	msgChannel = make(chan kafka.Message, maxBatchSize*2)
-)
+var ()
 
 // 0. 因为需要削峰 需要多协程读取消息然后批量写db
 
@@ -36,13 +32,11 @@ var (
 // 3.2 其他异常：再次投递到kafka，超过一定次数投递到死信队列，记录异常操作
 
 // TODO ack怎么选择？自动？异步？同步？
-
-func startKafkaConsumer(db *gorm.DB, cache *redis.Client) {
-
+func StartNormalConsumer(db *gorm.DB, cache *redis.Client) {
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:       []string{brokerAddress},
-		GroupID:       consumerGroupID,
-		Topic:         topic,
+		GroupID:       normalConsumerGroupID,
+		Topic:         normalTopic,
 		MinBytes:      50e3, // 提高最小批量阈值
 		MaxBytes:      10e6,
 		MaxWait:       500 * time.Millisecond, // 延长批量等待时间
@@ -51,64 +45,31 @@ func startKafkaConsumer(db *gorm.DB, cache *redis.Client) {
 	})
 	defer reader.Close()
 
-	// 消息拉取协程组
-	go func() {
-		for {
-			msg, err := reader.FetchMessage(context.Background())
-			if err != nil {
-				fmt.Printf("拉取消息失败: %v\n", err)
-				time.Sleep(1 * time.Second) // 错误退避
-				continue
-			}
-			msgChannel <- msg
-		}
-	}()
+	batchPool := make(chan struct{}, 5) // 并发控制
+	defer func() { <-batchPool }()
+	msgChannel := make(chan kafka.Message, 10*2)
 
-	// 批量处理协程
-	for {
-		batch := make([]kafka.Message, 0, maxBatchSize)
-		timeout := time.After(flushInterval)
+	abstractConsumer(db, cache, reader, batchPool, msgChannel, consumeMsg)
+}
 
-		// 聚合批次，拉取到10条消息 / 超时没读取到消息 执行批量消费
-	AggregateLoop:
-		for {
-			select {
-			case msg := <-msgChannel:
-				batch = append(batch, msg)
-				if len(batch) >= maxBatchSize {
-					break AggregateLoop
-				}
-			case <-timeout:
-				break AggregateLoop
-			}
-		}
+// 实际消费的逻辑
+func consumeMsg(db *gorm.DB, cache *redis.Client, reader *kafka.Reader, batchPool chan struct{}, msgChannel chan kafka.Message, msgs []kafka.Message) {
 
-		if len(batch) == 0 {
-			continue
-		}
+	inserts, err := parseNormalMessages(msgs)
+	if err != nil {
+		fmt.Printf("解析消息失败: %v\n", err)
+		return
+	}
+	// 批量写入数据库
+	if err = handleOrders(db, inserts); err != nil {
+		fmt.Printf("批量插入失败: %v\n", err)
+		retryBatch(msgs)
+		return
+	}
 
-		batchPool <- struct{}{} // 获取处理槽位
-		go func(batch []kafka.Message) {
-
-			defer func() { <-batchPool }()
-			inserts, err := parseMessages(batch)
-			if err != nil {
-				fmt.Printf("解析消息失败: %v\n", err)
-				return
-			}
-			// 批量写入数据库
-			if err = handleOrders(db, inserts); err != nil {
-				fmt.Printf("批量插入失败: %v\n", err)
-
-				retryBatch(batch)
-				return
-			}
-
-			// 提交偏移量（需保证至少一次语义）
-			if err := reader.CommitMessages(context.Background(), batch...); err != nil {
-				fmt.Printf("提交偏移量失败: %v\n", err)
-			}
-		}(batch)
+	// 提交偏移量（需保证至少一次语义）
+	if err := reader.CommitMessages(context.Background(), msgs...); err != nil {
+		fmt.Printf("提交偏移量失败: %v\n", err)
 	}
 }
 
@@ -160,7 +121,7 @@ func handleOrders(db *gorm.DB, inserts []*model.OrderAction) error {
 		return nil
 	}
 
-	// inserts = append(inserts, &model.OrderAction{AppID: "APP_20250222", OrderID: "fc47b03c-5cf0-4a37-9cda-46d9e6c61510", ActionType: "created"})
+	inserts = append(inserts, &model.OrderAction{AppID: "APP_20250222", OrderID: "92bf639d-94e0-4ee8-a44f-230d6990e31f", ActionType: "created"})
 
 	err := db.Create(&inserts).Error
 	var mysqlErr *mysql.MySQLError
@@ -181,7 +142,7 @@ func retryBatch(batch []kafka.Message) {
 	// TODO 投递到kafka中，超过一定次数再投递到死信队列
 }
 
-func parseMessages(msgs []kafka.Message) ([]*model.OrderAction, error) {
+func parseNormalMessages(msgs []kafka.Message) ([]*model.OrderAction, error) {
 
 	var inserts []*model.OrderAction
 	for _, msg := range msgs {

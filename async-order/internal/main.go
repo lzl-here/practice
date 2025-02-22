@@ -1,10 +1,12 @@
 package main
 
 import (
-	"kafka/internal/model"
+	"async-order/internal/model"
 	"log"
 	"net/http"
 	"time"
+
+	consumer "async-order/internal/consumer"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -41,9 +43,8 @@ func main() {
 	}
 	defer writer.Close()
 	startServer(writer)
-
-	go startKafkaConsumer(db, cache)
-	go startDeadConsumer(db)
+	go consumer.StartNormalConsumer(db, cache)
+	go consumer.StartDeadConsumer(db, cache)
 	select {}
 }
 

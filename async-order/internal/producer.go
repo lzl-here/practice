@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"kafka/internal/model"
+	"async-order/internal/model"
 
 	"encoding/json"
 

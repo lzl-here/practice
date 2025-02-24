@@ -51,4 +51,5 @@ func parseDeadMessage(msgs []kafka.Message) ([]*model.OrderRecord, error) {
 
 func consumeDeadMsg(db *gorm.DB, cache *redis.Client, reader *kafka.Reader, msgs []kafka.Message) {
 	// 写库，记录错误
+	// 通知其他系统回滚： 库存、支付、积分
 }

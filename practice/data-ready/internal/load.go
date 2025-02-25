@@ -12,11 +12,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func loadData(ctx context.Context, db *gorm.DB, cache *redis.Client, shopID int) {
-	PreheatHandler(ctx, db, cache, shopID)
-}
-
-func PreheatHandler(ctx context.Context, db *gorm.DB, cache *redis.Client, shopID int) error {
+func loadData(ctx context.Context, db *gorm.DB, cache *redis.Client, shopID int) error {
 	// 1. 状态检查
 	if status, _ := checkPreheatStatus(ctx, cache, shopID); status != "not_exists" {
 		sendAlert(fmt.Sprintf("重复预热请求 shopID:%d", shopID))
@@ -43,11 +39,11 @@ func PreheatHandler(ctx context.Context, db *gorm.DB, cache *redis.Client, shopI
 	return nil
 }
 
-func handlePreheatFailure(ctx context.Context, cache *redis.Client, shopID int, userID int, err error) {
-	sendAlert(fmt.Sprintf("预热失败 shopID:%d", shopID))
+func handlePreheatFailure(ctx context.Context, cache *redis.Client, shopID int, lastID int, err error) {
+	sendAlert(fmt.Sprintf("预热失败 shopID:%d, msg:%s", shopID, err.Error()))
 	// 写入缓存进度
 	cursorKey := fmt.Sprintf(PreheatingUserCursor, shopID)
-	cache.Set(ctx, cursorKey, userID, 24*time.Hour)
+	cache.Set(ctx, cursorKey, lastID, 24*time.Hour)
 }
 
 func executePreheat(ctx context.Context, db *gorm.DB, cache *redis.Client, shopID int) (int, error) {

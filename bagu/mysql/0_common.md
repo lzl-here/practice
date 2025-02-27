@@ -63,7 +63,6 @@ varchar：变长字符串类型，大小限制在2^16-1字节以内，varchar(n)
 - MyISAM表存了总数，InnoDB因为需要支持多版本快照读（MVCC），无法存总数，count需要实时计算，而MyISAM直接读取
 
 
-
-
-
+## datetime和timestamp
+timestamp带有时区信息，datetime没有时区信息
 

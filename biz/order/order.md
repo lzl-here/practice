@@ -29,3 +29,7 @@
 一，不以商户id routing，改为时间。业务上，查一个月或特定时间段单据本来就是常见的
 二，routing配置routing_partition_size。
 三，shard个数设计为素数个
+
+
+
+

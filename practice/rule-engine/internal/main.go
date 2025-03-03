@@ -2,33 +2,52 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"rule-engine/internal/mapping"
 	"rule-engine/internal/model"
 	"rule-engine/internal/route"
-	"rule-engine/internal/service"
+	"rule-engine/internal/rule"
 	"runtime"
 	"sync"
 	"time"
 )
 
 func main() {
-	// 1. 初始化路由引擎（同原实现）
+	builder, err := mapping.NewDSLParamBuilder("mappings.yaml")
+	if err != nil {
+		panic(err)
+	}
 
-	router := initRouter()
-	// 2. 生成30万测试订单
-	orders := GenMockOrders(300_000)
+	order := model.MockOrder()
 
-	// parrallelRoute(context.Background(), router, orders)
-	normalRoute(context.Background(), router, orders)
+	params, err := builder.BuildParams(order)
+	if err != nil {
+		panic(err)
+	}
 
+	fmt.Printf("%+v", params)
 }
 
-func initRouter() *route.Router {
-	rules := []route.RoutingRule{ /*...*/ }
-	engine := route.NewRuleEngine(rules)
+
+func orderRoute() {
+	// 1. 初始化路由引擎
+	router := initRouter("rules-config.yaml")
+	// 2. 生成30万测试订单
+	orders := GenMockOrders(300_000)
+	// 3. 执行订单路由
+	// parrallelRoute(context.Background(), router, orders)
+	normalRoute(context.Background(), router, orders)
+}
+
+func initRouter(path string) *route.Router {
+	tree, err := rule.LoadFromConfig(path)
+	if err != nil {
+		log.Fatalf("Failed to load rule tree config: %v", err)
+	}
+	engine := route.NewRuleEngine(tree)
 	router := &route.Router{
-		RuleEngine:     engine,
-		ServiceClients: service.NewServiceMap(),
+		RuleEngine: engine,
 	}
 	return router
 }

@@ -13,10 +13,41 @@ type Order struct {
 	UserID      int64
 	Items       []OrderItem
 	TotalAmount float64
-	UserType    string // "personal", "enterprise"
+	UserType    string
 	DeviceID    string
 	IP          string
-	Location    string // 格式："国家-省份-城市"
+	Location    string
+
+	// 新增风控字段 ⭐
+	DeviceScore      int    // 设备信用分 0-100
+	IPRiskLevel      string // IP风险等级 low/medium/high
+	GeoMismatch      bool   // 地理定位不匹配
+	AuthLevel        int    // 认证等级 1-5
+	SessionAge       int    // 会话存活时间(秒)
+	TwoFactorEnabled bool   // 是否启用双因素认证
+
+	// 企业验证字段 ⭐
+	LicenseValid      bool    // 营业执照有效性
+	TaxStatus         string  // 税务状态 normal/abnormal
+	RegisteredCapital float64 // 注册资本
+
+	// 支付相关字段 ⭐
+	PaymentMethod      string // 支付方式 crypto/international_card/...
+	BillingCountry     string // 账单国家
+	ShippingCountry    string // 收货国家
+	IsNewPaymentMethod bool   // 是否新支付方式
+
+	// 物流相关字段 ⭐
+	TotalWeight     float64 // 总重量(kg)
+	MaxDimension    float64 // 最大尺寸(cm)
+	ContainsFragile bool    // 是否含易碎品
+
+	// 用户行为字段 ⭐
+	LastLoginCountry    string // 最近登录国家
+	RegistrationCountry string // 注册国家
+	DeviceChangeCount   int    // 设备变更次数
+
+	TransactionTotal int
 }
 
 type OrderItem struct {
@@ -27,18 +58,39 @@ type OrderItem struct {
 }
 
 func MockOrder() *Order {
-	rand.Seed(time.Now().UnixNano()) // 初始化随机种子
+	rand.Seed(time.Now().UnixNano())
 
-	return &Order{
-		ID:          generateRandomString(10),
-		UserID:      rand.Int63n(1000000),
-		TotalAmount: rand.Float64() * 1000,
-		UserType:    randomChoice([]string{"personal", "enterprise"}),
-		DeviceID:    "DEV-" + generateRandomString(6),
-		IP:          generateRandomIP(),
-		Location:    randomLocation(),
-		Items:       generateRandomItems(),
+	order := &Order{
+		// 原有字段...
+
+		// 新增字段初始化 ⭐
+		DeviceScore:      rand.Intn(101),
+		IPRiskLevel:      randomChoice([]string{"low", "medium", "high"}),
+		GeoMismatch:      rand.Intn(2) == 1,
+		AuthLevel:        rand.Intn(5) + 1,
+		SessionAge:       rand.Intn(3600),
+		TwoFactorEnabled: rand.Intn(2) == 1,
+
+		LicenseValid:      rand.Intn(2) == 1,
+		TaxStatus:         randomChoice([]string{"normal", "abnormal"}),
+		RegisteredCapital: rand.Float64()*1000000 + 100000,
+
+		PaymentMethod:      randomChoice([]string{"crypto", "international_card", "alipay", "wechat"}),
+		BillingCountry:     randomChoice([]string{"中国", "美国", "日本"}),
+		ShippingCountry:    randomChoice([]string{"中国", "美国", "日本"}),
+		IsNewPaymentMethod: rand.Intn(2) == 1,
+
+		TotalWeight:     rand.Float64()*50 + 5,
+		MaxDimension:    rand.Float64()*200 + 20,
+		ContainsFragile: rand.Intn(2) == 1,
+
+		LastLoginCountry:    randomChoice([]string{"中国", "美国", "日本"}),
+		RegistrationCountry: randomChoice([]string{"中国", "美国", "日本"}),
+		DeviceChangeCount:   rand.Intn(5),
 	}
+
+	// 保持原有生成逻辑...
+	return order
 }
 
 // 辅助函数定义

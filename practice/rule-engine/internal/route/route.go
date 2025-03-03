@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 	"rule-engine/internal/model"
-	"rule-engine/internal/service"
+	"rule-engine/internal/rule"
 	"sync"
 )
 
@@ -16,6 +16,21 @@ type RoutingDecision struct {
 	PhysicalDestinations []string // 实物商品处理目标系统
 	RequiresReview       bool     // 需要人工审核
 	SplitOrders          []string // 拆单后的子订单ID
+}
+
+func NewRoutingDecision(order *model.Order, routeDest string) (*RoutingDecision, error) {
+	if routeDest == "" {
+		return nil, fmt.Errorf("决策规则为空")
+	}
+
+	// TODO 由规则构建路由节点
+	return &RoutingDecision{
+		OrderID:              order.ID,
+		VirtualDestinations:  []string{routeDest},
+		PhysicalDestinations: []string{routeDest},
+		RequiresReview:       false,
+		SplitOrders:          []string{},
+	}, nil
 }
 
 // 规则引擎接口
@@ -94,90 +109,45 @@ func (r *RiskControlRule) Evaluate(order *model.Order) (bool, *RoutingDecision) 
 
 // ### 规则引擎 ####
 type RuleEngine struct {
-	rules []RoutingRule
-	mu    sync.RWMutex
+	mu   *sync.RWMutex
+	tree *rule.RuleTree
 }
 
-func NewRuleEngine(rules []RoutingRule) *RuleEngine {
-	return &RuleEngine{rules: rules}
+func NewRuleEngine(tree *rule.RuleTree) *RuleEngine {
+	return &RuleEngine{tree: tree, mu: &sync.RWMutex{}}
 }
 
-func (e *RuleEngine) EvaluateOrder(order *model.Order) *RoutingDecision {
+func (e *RuleEngine) EvaluateOrder(order *model.Order) (*RoutingDecision, error) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-
-	for _, rule := range e.rules {
-		if matched, decision := rule.Evaluate(order); matched {
-			return decision
-		}
+	dest, err := e.tree.Match(order)
+	if err != nil {
+		return nil, err
 	}
-
-	// 默认路由规则
-	return &RoutingDecision{
-		OrderID:              order.ID,
-		VirtualDestinations:  []string{"DEFAULT_SERVICE"},
-		PhysicalDestinations: []string{"DEFAULT_WAREHOUSE"},
-	}
+	return NewRoutingDecision(order, dest)
 }
 
 // ### 路由执行器 ####
 type Router struct {
-	RuleEngine     *RuleEngine
-	ServiceClients map[string]service.ServiceClient
+	RuleEngine *RuleEngine
 }
 
 func (r *Router) RouteOrder(ctx context.Context, order *model.Order) error {
-	decision := r.RuleEngine.EvaluateOrder(order)
-	log.Printf("Routing decision: %+v\n", decision)
+	decision, err := r.RuleEngine.EvaluateOrder(order)
+	if err != nil {
+		return err
+	}
+	//TODO 订单路由
+	// 根据规则引擎匹配的决策进行后续处理，比如 课程服务需要写入权益、实物商品发物流、大金额订单需要风控系统介入、免费试听订单需要走其他渠道....
 
 	// 需要人工审核时中断流程
-	if decision.RequiresReview {
-		return sendToManualReview(order, decision)
+	for _, d := range decision.PhysicalDestinations {
+		fmt.Println(fmt.Sprintln("订单路由, 实物商品: %s", d))
 	}
 
-	// 处理虚拟商品
-	var wg sync.WaitGroup
-	errChan := make(chan error, len(decision.VirtualDestinations)+len(decision.PhysicalDestinations))
-
-	// 处理虚拟服务
-	for _, dest := range decision.VirtualDestinations {
-		wg.Add(1)
-		go func(service string) {
-			defer wg.Done()
-			if client, ok := r.ServiceClients[service]; ok {
-				if err := client.Process(ctx, order); err != nil {
-					errChan <- fmt.Errorf("%s error: %w", service, err)
-				}
-			}
-		}(dest)
+	for _, v := range decision.VirtualDestinations {
+		fmt.Println(fmt.Sprintf("订单路由, 虚拟商品: %s", v))
 	}
-
-	// 处理实物物流
-	for _, dest := range decision.PhysicalDestinations {
-		wg.Add(1)
-		go func(warehouse string) {
-			defer wg.Done()
-			if err := processPhysicalOrder(warehouse, order); err != nil {
-				errChan <- fmt.Errorf("%s error: %w", warehouse, err)
-			}
-		}(dest)
-	}
-
-	go func() {
-		wg.Wait()
-		close(errChan)
-	}()
-
-	// 收集错误
-	var errors []error
-	for err := range errChan {
-		errors = append(errors, err)
-	}
-
-	if len(errors) > 0 {
-		return fmt.Errorf("order processing errors: %v", errors)
-	}
-
 	return nil
 }
 

@@ -12,7 +12,7 @@ import (
 func getValueByPath(obj interface{}, path string) (interface{}, error) {
 	current := reflect.ValueOf(obj)
 	if current.Kind() == reflect.Ptr {
-		current = current.Elem()
+		current = current.Elem() 
 	}
 
 	segments := strings.Split(path, ".")

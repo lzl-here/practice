@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"rule-engine/internal/model"
+	"rule-mapping/internal/model"
 )
 
 type ServiceClient interface {

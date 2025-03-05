@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"rule-engine/internal/model"
+	"rule-mapping/internal/model"
 	"strings"
 
 	"github.com/Knetic/govaluate"

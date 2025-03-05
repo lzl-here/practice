@@ -1,4 +1,4 @@
-module rule-engine
+module rule-mapping
 
 go 1.23.2
 

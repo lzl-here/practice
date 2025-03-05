@@ -3,12 +3,13 @@ package service
 import (
 	"context"
 	"log"
-	"rule-engine/internal/model"
+	"rule-mapping/internal/model"
 )
 
-type CourseService struct{}
+type EnterpriseService struct {
+}
 
-func (s *EnterpriseService) Process(ctx context.Context, order *model.Order) error {
+func (s *CourseService) Process(ctx context.Context, order *model.Order) error {
 	// 调用课程开通API
 	log.Printf("Enabling course access for user %d\n", order.UserID)
 	// ... 具体API调用逻辑

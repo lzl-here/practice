@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"rule-engine/internal/model"
-	"rule-engine/internal/rule"
+	"rule-mapping/internal/model"
+	"rule-mapping/internal/rule"
 	"sync"
 )
 

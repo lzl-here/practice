@@ -1,0 +1,34 @@
+name: "订单处理流程"
+nodes:
+  - name: "订单处理流程"
+    action: "startOrder"
+    transitions:
+      - condition: "true"
+        next: "验证订单"
+  - name: "验证订单"
+    action: "validateOrder"
+    transitions:
+      - condition: "true"
+        next: "处理支付"
+      - condition: "false"
+        next: "终止流程"
+  - name: "处理支付"
+    action: "processPayment"
+    transitions:
+      - condition: "true"
+        next: "生成运单"
+      - condition: "false"
+        next: "终止流程"
+  - name: "生成运单"
+    action: "generateShippingOrder"
+    transitions:
+      - condition: "true"
+        next: "结束流程"
+  - name: "终止流程"
+    action: "failOrder"
+    transitions: []
+  - name: "结束流程"
+    action: "completeOrder"
+    transitions: []
+
+

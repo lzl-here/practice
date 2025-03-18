@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	shop "data-ready/internal/load"
 	"fmt"
 	"log"
 
@@ -53,7 +54,20 @@ func main() {
 
 	ctx := context.Background()
 
-	shopID := 1
+	ch := make(chan int, 10000)
+	ch <- 1
+	consumeNum := 1
+	for range consumeNum {
+		startConsume(ctx, ch, db, rdb)
+	}
+	select {}
+}
 
-	loadData(ctx, db, rdb, shopID)
+func startConsume(ctx context.Context, ch chan int, db *gorm.DB, rdb *redis.Client) {
+	go func() {
+		for {
+			shopID := <-ch
+			shop.LoadShop(ctx, db, rdb, shopID)
+		}
+	}()
 }

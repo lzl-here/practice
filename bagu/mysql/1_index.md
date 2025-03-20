@@ -101,6 +101,8 @@ select * from table where a = 1 and b > 1 and c = 1;
 有索引下推：
 在引擎层过滤掉了c != 1的数据，直接返回正确的数据
 
+在联合索引这里过滤掉了非法的数据，减少了这些非法数据的回表
+
 ## 唯一索引
 
 读：
@@ -109,3 +111,8 @@ select * from table where a = 1 and b > 1 and c = 1;
 写：
 普通索引的写入不会立刻写入磁盘，而是写入内存中：change buffer，等后面进行批量写入磁盘
 而唯一索引无法利用change buffer，因为得知道磁盘中是否有该数据才能插入，如果有数据的话不应该允许插入，因此不能先写入change buffer后再批量写入
+
+
+## 其他
+
+hash连接
